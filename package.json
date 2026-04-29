@@ -1,6 +1,9 @@
 {
   "name": "bot-schedule-teman",
   "version": "1.0.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "description": "Bot Telegram untuk mengelola jadwal harian dengan reminder otomatis",
   "main": "dist/index.js",
   "scripts": {
