@@ -3,11 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 import cron from 'node-cron';
 import 'dotenv/config';
 
-// 1. Inisialisasi Bot & Supabase
 const bot = new Telegraf(process.env.BOT_TOKEN!);
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_KEY!);
 
-// 2. Menu Utama (Keyboard)
 const mainMenu = {
   reply_markup: {
     keyboard: [
@@ -18,18 +16,13 @@ const mainMenu = {
   }
 };
 
-// --- HANDLER: START ---
 bot.start((ctx) => {
-  ctx.reply(
-    `Halo ${ctx.from.first_name}! Gue asisten jadwal lo. Silakan pilih menu di bawah:`,
-    mainMenu
-  );
+  ctx.reply(`Halo ${ctx.from.first_name}! Kirim teks panjang lo, nanti gue rapihin jadi jadwal otomatis.`, mainMenu);
 });
 
-// --- HANDLER: TOMBOL TAMBAH AGENDA ---
 bot.hears('➕ Tambah Agenda', (ctx) => {
   ctx.reply(
-    'Silakan *Reply* pesan ini dengan format:\n\n`Jam` `Nama Kegiatan` \nContoh: `07:30 Olahraga Pagi` \n\n(Kalau paste teks panjang, gue cuma ambil baris pertamanya aja ya!)',
+    'Silakan *Reply* dengan teks panjang atau list tugas lo.\n\nContoh format yang terbaca:\n- 08:00 Makan\n- Start 09:30 Meeting\n- 1. 10:00 Kerja',
     {
       parse_mode: 'Markdown',
       reply_markup: { force_reply: true }
@@ -37,50 +30,48 @@ bot.hears('➕ Tambah Agenda', (ctx) => {
   );
 });
 
-// --- HANDLER: PROSES INPUT (REPLY SYSTEM) ---
 bot.on('message', async (ctx) => {
   if ('reply_to_message' in ctx.message && ctx.message.reply_to_message) {
     const originalText = (ctx.message.reply_to_message as any).text || '';
 
-    if (originalText.includes('Silakan Reply pesan ini')) {
+    if (originalText.includes('Silakan Reply dengan teks panjang')) {
       const input = (ctx.message as any).text;
 
-      // REGEX: Mengambil jam di awal, dan mengambil teks HANYA sampai baris baru pertama ([^\n]+)
-      const regex = /^(\d{2}:\d{2})\s+([^\n]+)/;
-      const match = input.match(regex);
+      // REGEX CANGGIH: Mencari semua pola jam (HH:mm) dan teks setelahnya dalam satu pesan
+      // Pola ini mencari jam, lalu mengambil kata-kata setelahnya sampai ketemu baris baru
+      const regex = /(\d{2}:\d{2})\s*(?:-|@|start|)\s*([^\n]+)/gi;
 
-      if (!match) {
-        return ctx.reply('❌ Format salah! Gunakan HH:mm di awal teks (Contoh: 08:30 Absen Intern)');
-      }
+      let match;
+      const schedulesFound = [];
 
-      const time = match[1];
-      let content = match[2].trim();
-
-      // Limit teks agar tidak merusak tampilan list (max 60 karakter)
-      if (content.length > 60) {
-        content = content.substring(0, 57) + '...';
-      }
-
-      // Simpan ke Supabase
-      const { error } = await supabase.from('schedules').insert([
-        {
+      while ((match = regex.exec(input)) !== null) {
+        schedulesFound.push({
           user_id: ctx.from.id,
-          time: `${time}:00`,
-          content: content
-        }
-      ]);
+          time: `${match[1]}:00`,
+          content: match[2].trim().substring(0, 100) // Batasi 100 karakter per baris
+        });
+      }
+
+      if (schedulesFound.length === 0) {
+        return ctx.reply('❌ Gue nggak nemu format jam (HH:mm) di teks itu. Coba cek lagi.');
+      }
+
+      // Simpan semua jadwal yang ditemukan sekaligus (Bulk Insert)
+      const { error } = await supabase.from('schedules').insert(schedulesFound);
 
       if (error) {
         console.error(error);
-        return ctx.reply('❌ Waduh, gagal nyambung ke database.');
+        return ctx.reply('❌ Gagal masukin ke database.');
       }
 
-      ctx.reply(`✅ Mantap! "${content}" jam ${time} udah masuk list.`, mainMenu);
+      ctx.reply(`✅ Berhasil! Gue nemu dan nambahin *${schedulesFound.length}* jadwal baru.`, {
+        parse_mode: 'Markdown',
+        ...mainMenu
+      });
     }
   }
 });
 
-// --- HANDLER: LIHAT JADWAL ---
 bot.hears('📅 Lihat Jadwal Hari Ini', async (ctx) => {
   const { data, error } = await supabase
     .from('schedules')
@@ -89,60 +80,30 @@ bot.hears('📅 Lihat Jadwal Hari Ini', async (ctx) => {
     .order('time', { ascending: true });
 
   if (error) return ctx.reply('❌ Gagal ambil data.');
+  if (!data || data.length === 0) return ctx.reply('Jadwal lo kosong.');
 
-  if (!data || data.length === 0) {
-    return ctx.reply('Kosong bro. Belum ada agenda buat hari ini.');
-  }
-
-  const list = data
-    .map((s) => `⏰ *${s.time.slice(0, 5)}* - ${s.content}`)
-    .join('\n');
-
-  ctx.reply(`📅 *Jadwal Lo Hari Ini:*\n\n${list}`, { parse_mode: 'Markdown' });
+  const list = data.map(s => `⏰ *${s.time.slice(0, 5)}* - ${s.content}`).join('\n');
+  ctx.reply(`📅 *Jadwal Rapi Lo:*\n\n${list}`, { parse_mode: 'Markdown' });
 });
 
-// --- HANDLER: HAPUS SEMUA JADWAL ---
 bot.hears('🗑️ Hapus Semua', async (ctx) => {
-  const { error } = await supabase
-    .from('schedules')
-    .delete()
-    .eq('user_id', ctx.from.id);
-
-  if (error) return ctx.reply('❌ Gagal menghapus jadwal.');
-  ctx.reply('🗑️ Semua jadwal lo udah dibersihin!', mainMenu);
+  await supabase.from('schedules').delete().eq('user_id', ctx.from.id);
+  ctx.reply('🗑️ Semua jadwal dihapus!', mainMenu);
 });
 
-// --- CRON JOB: AUTO REMINDER (TIAP MENIT) ---
+// Reminder tetap jalan tiap menit
 cron.schedule('* * * * *', async () => {
-  const sekarang = new Date().toLocaleTimeString('en-GB', {
+  const skrg = new Date().toLocaleTimeString('en-GB', {
     hour: '2-digit',
     minute: '2-digit',
     timeZone: 'Asia/Jakarta'
   });
 
-  const { data } = await supabase
-    .from('schedules')
-    .select('*')
-    .eq('time', `${sekarang}:00`);
+  const { data } = await supabase.from('schedules').select('*').eq('time', `${skrg}:00`);
 
-  if (data && data.length > 0) {
-    data.forEach((item) => {
-      bot.telegram.sendMessage(
-        item.user_id,
-        `🔔 *REMINDER!*\n\nSekarang jam *${sekarang}*, waktunya: \n👉 *${item.content}*`,
-        { parse_mode: 'Markdown' }
-      );
-    });
-  }
-}, {
-  timezone: "Asia/Jakarta"
-});
+  data?.forEach(item => {
+    bot.telegram.sendMessage(item.user_id, `🔔 *PENGINGAT:* Sekarang jam ${skrg}, waktunya: *${item.content}*`, { parse_mode: 'Markdown' });
+  });
+}, { timezone: "Asia/Jakarta" });
 
-// --- LAUNCH ---
-bot.launch().then(() => {
-  console.log('🚀 Bot Schedule Teman Berhasil Jalan!');
-});
-
-// Graceful stop
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+bot.launch().then(() => console.log('🚀 Bot Multi-Schedule Ready!'));
