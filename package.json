@@ -1,0 +1,32 @@
+{
+  "name": "bot-schedule-teman",
+  "version": "1.0.0",
+  "description": "Bot Telegram untuk mengelola jadwal harian dengan reminder otomatis",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "node dist/index.js",
+    "dev": "ts-node --esm src/index.ts",
+    "build": "tsc",
+    "build:start": "npm run build && npm start"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "scheduler",
+    "reminder"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.105.1",
+    "dotenv": "^17.4.2",
+    "node-cron": "^4.2.1",
+    "telegraf": "^4.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/node-cron": "^3.0.11",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}
