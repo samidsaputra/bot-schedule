@@ -102,14 +102,14 @@ bot.hears('➕ Tambah Agenda', (ctx) => {
   userState.set(userId, 'waiting_agenda');
 
   ctx.reply(
-    '✏️ *Tambah Agenda*\n\n' +
+    '✏️ <b>Tambah Agenda</b>\n\n' +
     'Kirim pesan dengan salah satu cara:\n\n' +
-    '*Format singkat:*\n' +
-    '`08:30 Rapat Pagi`\n\n' +
-    '*Atau paste teks panjang langsung* (bot otomatis cari jamnya):*\n' +
-    '_Contoh: paste briefing tim, jadwal lengkap, dsb._\n\n' +
+    '1️⃣ <b>Format singkat:</b>\n' +
+    '<code>08:30 Rapat Pagi</code>\n\n' +
+    '2️⃣ <b>Paste teks panjang</b> (bot otomatis cari jamnya)\n' +
+    '<i>Contoh: paste briefing tim, jadwal lengkap, dsb.</i>\n\n' +
     'Ketik /batal untuk membatalkan.',
-    { parse_mode: 'Markdown' }
+    { parse_mode: 'HTML' }
   );
 });
 
