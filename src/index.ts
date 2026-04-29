@@ -102,12 +102,12 @@ bot.hears('➕ Tambah Agenda', (ctx) => {
   userState.set(userId, 'waiting_agenda');
 
   ctx.reply(
-    '✏️ Kirim agenda dengan format:\n\n' +
-    '`HH:MM Nama Kegiatan`\n\n' +
-    'Contoh:\n' +
-    '`07:30 Olahraga Pagi`\n' +
-    '`13:00 Makan Siang`\n' +
-    '`20:00 Belajar Coding`\n\n' +
+    '✏️ *Tambah Agenda*\n\n' +
+    'Kirim pesan dengan salah satu cara:\n\n' +
+    '*Format singkat:*\n' +
+    '`08:30 Rapat Pagi`\n\n' +
+    '*Atau paste teks panjang langsung* (bot otomatis cari jamnya):*\n' +
+    '_Contoh: paste briefing tim, jadwal lengkap, dsb._\n\n' +
     'Ketik /batal untuk membatalkan.',
     { parse_mode: 'Markdown' }
   );
@@ -215,30 +215,79 @@ bot.on('message', async (ctx) => {
   if (!('text' in message)) return;
   const text = message.text.trim();
 
-  // ---- STATE: Menunggu input agenda baru ----
+  // ---- STATE: Menunggu input agenda baru (Smart Paste) ----
   if (state === 'waiting_agenda') {
-    const regex = /^(\d{1,2}:\d{2})\s+(.+)$/;
-    const match = text.match(regex);
+    // Cari pola jam di mana saja dalam teks (HH:MM atau H:MM)
+    const timeRegex = /(\d{1,2}:\d{2})/;
+    const timeMatch = text.match(timeRegex);
+
+    if (timeMatch) {
+      // ✅ Jam ditemukan — simpan seluruh teks sebagai konten
+      const timePart = timeMatch[1];
+      const timeFormatted = timePart.padStart(5, '0');
+      const today = getWIBDate();
+
+      const { error } = await supabase.from('schedules').insert([
+        {
+          user_id: userId,
+          date: today,
+          time: `${timeFormatted}:00`,
+          content: text, // Simpan SELURUH teks (termasuk deskripsi panjang)
+          is_done: false,
+        },
+      ]);
+
+      if (error) {
+        console.error('Error insert jadwal:', error);
+        return ctx.reply('❌ Gagal menyimpan jadwal ke database. Coba lagi!');
+      }
+
+      userState.delete(userId);
+      // Preview konten — potong jika terlalu panjang untuk preview
+      const preview = text.length > 100 ? text.slice(0, 100) + '...' : text;
+      return ctx.reply(
+        `✅ *Agenda berhasil disimpan!*\n\n` +
+        `⏰ Jam: *${timeFormatted}*\n` +
+        `📝 Deskripsi: _${preview}_\n\n` +
+        `Reminder otomatis akan dikirim saat waktunya tiba! 🔔`,
+        { parse_mode: 'Markdown', ...mainMenu }
+      );
+    } else {
+      // ⏳ Jam tidak ditemukan — tanya dulu ke user
+      // Simpan teks ke state sementara
+      userState.set(userId, `waiting_time:${text}`);
+      return ctx.reply(
+        '🕐 Jam tidak ditemukan di pesan kamu.\n\n' +
+        'Jam berapa agenda ini dijadwalkan?\n' +
+        'Balas dengan format: `HH:MM` (contoh: `08:30`)\n\n' +
+        'Ketik /batal untuk membatalkan.',
+        { parse_mode: 'Markdown' }
+      );
+    }
+  }
+
+  // ---- STATE: Menunggu jam untuk teks yang sudah disimpan ----
+  if (state && state.startsWith('waiting_time:')) {
+    const savedText = state.replace('waiting_time:', '');
+    const timeOnlyRegex = /^(\d{1,2}:\d{2})$/;
+    const match = text.match(timeOnlyRegex);
 
     if (!match) {
       return ctx.reply(
-        '❌ *Format salah!*\n\nGunakan format: `HH:MM Nama Kegiatan`\nContoh: `09:00 Zoom Meeting`\n\nAtau ketik /batal.',
+        '❌ Format jam salah. Gunakan `HH:MM` (contoh: `09:00`)\n\nAtau ketik /batal.',
         { parse_mode: 'Markdown' }
       );
     }
 
-    const [, timePart, content] = match;
+    const timeFormatted = match[1].padStart(5, '0');
     const today = getWIBDate();
-
-    // Pastikan format jam HH:MM (tambah 0 di depan jika perlu)
-    const timeFormatted = timePart.padStart(5, '0');
 
     const { error } = await supabase.from('schedules').insert([
       {
         user_id: userId,
         date: today,
-        time: `${timeFormatted}:00`, // Format TIME di SQL: HH:MM:SS
-        content: content,
+        time: `${timeFormatted}:00`,
+        content: savedText,
         is_done: false,
       },
     ]);
@@ -249,11 +298,14 @@ bot.on('message', async (ctx) => {
     }
 
     userState.delete(userId);
-    ctx.reply(
-      `✅ *Berhasil!* \n\n"*${content}*" dijadwalkan jam *${timeFormatted}* hari ini.\n\nLo akan dapat reminder otomatis saat waktunya tiba! 🔔`,
+    const preview = savedText.length > 100 ? savedText.slice(0, 100) + '...' : savedText;
+    return ctx.reply(
+      `✅ *Agenda berhasil disimpan!*\n\n` +
+      `⏰ Jam: *${timeFormatted}*\n` +
+      `📝 Deskripsi: _${preview}_\n\n` +
+      `Reminder otomatis akan dikirim saat waktunya tiba! 🔔`,
       { parse_mode: 'Markdown', ...mainMenu }
     );
-    return;
   }
 
   // ---- STATE: Menunggu nomor agenda yang dihapus ----
