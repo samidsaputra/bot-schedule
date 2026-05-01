@@ -7,8 +7,8 @@ import 'dotenv/config';
 // KONFIGURASI
 // ============================================
 const CONFIG = {
-  ADMIN_IDS: [7273127933] as number[],
-  GROUP_CHAT_ID: -1002447913210,
+  ADMIN_IDS: [7273127933] as number[], //
+  GROUP_CHAT_ID: -1002447913210, //
   CLAIM_HOURS: { START: 8, END: 18 },
   TIMEZONE: 'Asia/Jakarta',
 } as const;
@@ -42,7 +42,7 @@ const DateHelper = {
 
   isWeekday: () => {
     const day = new Date(new Date().toLocaleString('en-US', { timeZone: CONFIG.TIMEZONE })).getDay();
-    return day !== 0 && day !== 6; // 0 = Minggu, 6 = Sabtu
+    return day !== 0 && day !== 6;
   },
 
   isClaimAllowed: () => {
@@ -122,8 +122,8 @@ async function sendDailyTasks(ctx: any, targetChatId?: number) {
   for (const row of data) {
     const tasks = (row.content as string).split('\n').map(t => `• ${t}`).join('\n');
     const status = row.taken_by ? `✅ PIC: ${row.taken_by}` : '❌ Belum ada yang ambil';
-    const btn = !row.taken_by ? Markup.button.callback('🙋 Ambil Task', `claim_daily_${row.id}`) : Markup.button.callback('🔄 Batal Ambil', `undo_daily_${row.id}`);
-    await bot.telegram.sendMessage(chatId, `<b>📦 Task ${(row.pair_index ?? 0) + 1}</b>\n${tasks}\n\n${status}`, {
+    const btn = !row.taken_by ? Markup.button.callback('🙋 Ambil Paket', `claim_daily_${row.id}`) : Markup.button.callback('🔄 Batal Ambil', `undo_daily_${row.id}`);
+    await bot.telegram.sendMessage(chatId, `<b>📦 Paket ${(row.pair_index ?? 0) + 1}</b>\n${tasks}\n\n${status}`, {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([[btn]])
     });
@@ -179,7 +179,7 @@ bot.action(/claim_(daily|monthly)_(.+)/, async (ctx) => {
   ctx.answerCbQuery('✅ Berhasil diambil!');
 });
 
-// --- CALLBACK UNDO (PROTEKSI) ---
+// --- CALLBACK UNDO (PROTEKSI TOTAL) ---
 bot.action(/undo_(daily|monthly)_(.+)/, async (ctx) => {
   const [type, id] = [ctx.match[1], ctx.match[2]];
   const table = type === 'daily' ? 'schedules' : 'monthly_tasks';
@@ -187,7 +187,7 @@ bot.action(/undo_(daily|monthly)_(.+)/, async (ctx) => {
 
   const { data } = await supabase.from(table).select('taken_by').eq('id', id).single();
 
-  // Proteksi: Hanya PIC asli atau Admin yang bisa membatalkan
+  // HANYA PIC ASLI ATAU ADMIN YANG BISA BATALKAN
   if (data?.taken_by !== user && !UserHelper.isAdmin(ctx.from.id)) {
     return ctx.answerCbQuery('⚠️ Kamu bukan PIC tugas ini! Akses ditolak.', { show_alert: true });
   }
